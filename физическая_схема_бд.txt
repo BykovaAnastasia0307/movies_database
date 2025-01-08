@@ -1,0 +1,285 @@
+-- Таблица подписок
+CREATE TABLE subscription_types (
+    subscription_id SERIAL PRIMARY KEY,
+    subscription_type VARCHAR(50) NOT NULL, -- виды подписок
+    subscription_duration SMALLINT NOT NULL CHECK (subscription_duration >= 1 AND subscription_duration <= 365), -- продолжительность подписки
+    subscription_cost NUMERIC(6, 2) NOT NULL CHECK (subscription_cost >= 0.00 AND subscription_cost <= 9999.99), -- стоимость подписки
+    CONSTRAINT unique_subscription_type_duration UNIQUE (subscription_type, subscription_duration)
+);
+
+-- Таблица для кино
+CREATE TABLE movies (
+    movie_id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL, -- название
+    poster VARCHAR(255) DEFAULT NULL, -- ссылка на постер кино
+    type VARCHAR(20) CHECK (type IN ('фильм', 'сериал')) NOT NULL, 
+    description TEXT DEFAULT NULL, -- описание кино
+    year_of_production INTEGER DEFAULT NULL CHECK (year_of_production >= 1900 AND year_of_production <= EXTRACT(YEAR FROM CURRENT_DATE)), -- год производства кино
+    age_rating VARCHAR(5) CHECK (age_rating IN ('0+', '6+', '12+', '16+', '18+')) NOT NULL, -- возрастной рейтинг
+    duration INTEGER NOT NULL CHECK (duration >= 1 AND duration <= 999), -- продолжительность кино
+    user_rating NUMERIC(3, 1) DEFAULT 0.0 CHECK (user_rating >= 0.0 AND user_rating <= 10.0), -- рейтинг среди зрителей
+    view_count INTEGER DEFAULT 0 CHECK (view_count >= 0), -- число просмотров
+    subscription_id INTEGER DEFAULT 3, -- необходимая для просмотра подписка
+    ts_description tsvector, -- название фильма в формате tsvector для поиска по названию
+    CONSTRAINT unique_title_year UNIQUE (title, year_of_production),
+    FOREIGN KEY (subscription_id) REFERENCES subscription_types(subscription_id)
+);
+
+-- Таблица с видео
+CREATE TABLE video (
+    video_id SERIAL PRIMARY KEY, 
+    movie_id INTEGER NOT NULL, 
+    video_link VARCHAR(255) NOT NULL, -- Ссылка на видео
+    video_name VARCHAR(255) NOT NULL, -- Название видео
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id), 
+    CONSTRAINT unique_video_name UNIQUE (video_name)
+);
+
+-- Таблица пользователей
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(255) NOT NULL, -- имя пользователя
+    photo VARCHAR(255) DEFAULT NULL, -- ссылка на фотографию пользователя
+    gender VARCHAR(20) CHECK (gender IN ('мужской', 'женский', 'не указан')) NOT NULL, -- пол
+    registration_date DATE DEFAULT CURRENT_DATE, -- дата регистрации
+    country VARCHAR(255) DEFAULT NULL, -- страна, в которой пользователь находится
+    email VARCHAR(255) NOT NULL, -- адрес электронной почты
+    password VARCHAR(255) NOT NULL, -- пароль (хранится в открытом виде, на практике, конечно, нужно хэширование)
+    subscription_id INTEGER DEFAULT 3,
+    subscription_start_date DATE DEFAULT CURRENT_DATE, -- дата начала подписки
+    CONSTRAINT unique_username_email UNIQUE (username, email),
+    FOREIGN KEY (subscription_id) REFERENCES subscription_types(subscription_id)
+);
+
+-- Таблица для создателей кино
+CREATE TABLE moviemakers (
+    moviemaker_id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL, -- имя создателя кино
+    photo VARCHAR(255) DEFAULT NULL, -- ссылка на фотографию автора кино
+    birth_date DATE DEFAULT NULL, -- дата рождения
+    birth_place VARCHAR(255) DEFAULT NULL, -- место рождения
+    death_date DATE DEFAULT NULL, -- дата смерти
+    death_place VARCHAR(255) DEFAULT NULL, -- место смерти
+    age INTEGER DEFAULT NULL CHECK (age >= 0 AND age <= 150), -- возраст
+    ts_description tsvector, -- имя автора кино в формате tsvector для поиска по названию
+    CONSTRAINT unique_name_birth_date UNIQUE (name, birth_date) 
+); 
+
+-- Таблица, соединяющая авторов кино и кино
+CREATE TABLE moviemaker_and_movie (
+    moviemaker_and_movie_id SERIAL PRIMARY KEY,
+    moviemaker_id INTEGER NOT NULL,
+    movie_id INTEGER NOT NULL,
+    role VARCHAR(255) NOT NULL CHECK (role IN ('актер', 'режиссер', 'сценарист')), -- роль в производстве фильма 
+    FOREIGN KEY (moviemaker_id) REFERENCES moviemakers(moviemaker_id),
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+   CONSTRAINT unique_moviemaker_movie_role UNIQUE (moviemaker_id, movie_id, role) 
+);
+
+
+-- Таблица для жанров
+CREATE TABLE genres (
+    genre_id SERIAL PRIMARY KEY,
+    genre_name VARCHAR(255) NOT NULL, -- название жанра
+    CONSTRAINT unique_genre_name UNIQUE (genre_name)
+);
+
+
+-- Таблица, соединяющая жанры и кино
+CREATE TABLE genre_and_movie (
+    genre_and_movie_id SERIAL PRIMARY KEY,
+    genre_id INTEGER NOT NULL,
+    movie_id INTEGER NOT NULL,
+    FOREIGN KEY (genre_id) REFERENCES genres(genre_id),
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+    CONSTRAINT unique_genre_movie UNIQUE (genre_id, movie_id)
+);
+
+-- Таблица стран
+CREATE TABLE countries (
+    country_id SERIAL PRIMARY KEY,
+    country_name VARCHAR(255) NOT NULL, -- название страны
+    CONSTRAINT unique_country_name UNIQUE (country_name)
+);
+
+-- Таблица, соединяющая страны и кино
+CREATE TABLE country_and_movie (
+    country_and_movie_id SERIAL PRIMARY KEY,
+    country_id INTEGER NOT NULL,
+    movie_id INTEGER NOT NULL,
+    FOREIGN KEY (country_id) REFERENCES countries(country_id),
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+    CONSTRAINT unique_country_movie UNIQUE (country_id, movie_id)
+);
+
+-- Таблица отзывов
+CREATE TABLE reviews (
+    review_id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    movie_id INTEGER NOT NULL,
+    rating SMALLINT NOT NULL CHECK (rating >= 1 AND rating <= 10), -- оценка в шкале от 1 до 10
+    review_text TEXT DEFAULT NULL, -- текст отзыва
+    review_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- дата отзыва
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+    CONSTRAINT unique_user_movie_review UNIQUE (user_id, movie_id)
+);
+
+-- Таблица просмотренного кино
+CREATE TABLE watched_movies (
+    watched_movie_id SERIAL PRIMARY KEY,
+    movie_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    watching_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- дата просмотра
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT unique_movie_video_user UNIQUE (movie_id, user_id)
+);
+
+-- Таблица истории просмотров
+CREATE TABLE history (
+    history_id SERIAL PRIMARY KEY,
+    movie_id INTEGER NOT NULL,
+    video_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    watching_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- дата просмотра
+    stop_time INTEGER DEFAULT NULL, -- время остановки просмотра
+    FOREIGN KEY (movie_id) REFERENCES movies(movie_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (video_id) REFERENCES video(video_id),
+    CONSTRAINT unique_video_movie UNIQUE (video_id, user_id, watching_date)
+);
+
+-- триггерная функция пересчитывает рейтинг кино при добавлении отзыва на него
+CREATE OR REPLACE FUNCTION update_user_rating()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE movies
+    SET user_rating = (
+        SELECT ROUND(AVG(rating), 1)
+        FROM reviews
+        WHERE movie_id = NEW.movie_id
+    )
+    WHERE movie_id = NEW.movie_id;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER recalculate_user_rating
+AFTER INSERT ON reviews
+FOR EACH ROW
+EXECUTE PROCEDURE update_user_rating();
+
+-- триггерная функция увеличивает число просмотров фильма или сериала при добавлении его в просмотренные
+CREATE OR REPLACE FUNCTION increment_view_count()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE movies
+    SET view_count = view_count + 1
+    WHERE movie_id = NEW.movie_id;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_view_count
+AFTER INSERT ON watched_movies
+FOR EACH ROW
+EXECUTE PROCEDURE increment_view_count();
+
+-- триггерная функция расчитывает возраст создателей кино при добавлении или изменении данных
+CREATE OR REPLACE FUNCTION calculate_age()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.death_date IS NOT NULL THEN
+        NEW.age := EXTRACT(YEAR FROM age(NEW.death_date, NEW.birth_date));
+    ELSE
+        NEW.age := EXTRACT(YEAR FROM age(CURRENT_DATE, NEW.birth_date));
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER before_moviemakers_insert_or_update
+BEFORE INSERT OR UPDATE ON moviemakers
+FOR EACH ROW
+EXECUTE PROCEDURE calculate_age();
+
+-- триггерная функция добавляет в список просмотренного кино фильм, который отмечен полностью просмотренным в истории просмотра, и фильм или сериал, на который оставлен отзыв
+
+CREATE OR REPLACE FUNCTION add_to_watched_movies() 
+RETURNS TRIGGER AS $$
+BEGIN
+    -- добавляем в таблицу watched_movies фильмы из истории просмотра
+    IF TG_TABLE_NAME = 'history' THEN
+        IF NEW.stop_time = (SELECT duration FROM movies WHERE movie_id = NEW.movie_id AND type = 'фильм') THEN
+            INSERT INTO watched_movies (movie_id, user_id, watching_date)
+            VALUES (NEW.movie_id, NEW.user_id, NEW.watching_date)
+            ON CONFLICT DO NOTHING;
+        END IF;
+    END IF;
+
+    -- добавляем в таблицу watched_movies фильмы и сериалы, на которые был оставлен отзыв
+    IF TG_TABLE_NAME = 'reviews' THEN
+        INSERT INTO watched_movies (movie_id, user_id, watching_date)
+        VALUES (NEW.movie_id, NEW.user_id, NEW.review_date)
+        ON CONFLICT DO NOTHING; 
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER check_history_completion
+AFTER INSERT OR UPDATE ON history
+FOR EACH ROW
+EXECUTE PROCEDURE add_to_watched_movies();
+
+CREATE TRIGGER add_review_to_watched
+AFTER INSERT ON reviews
+FOR EACH ROW
+EXECUTE PROCEDURE add_to_watched_movies();
+
+
+
+-- функция ищет 10 новых фильмов и сериалов (текущего и предыдущего года производства) с наивысшим пользовательским рейтингом
+CREATE OR REPLACE FUNCTION get_top_new_movies()
+RETURNS TABLE (
+    movie_id INTEGER,
+    title VARCHAR,
+    year_of_production INTEGER,
+    user_rating NUMERIC(3, 1),
+    description TEXT,
+    duration INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT m.movie_id, m.title, m.year_of_production, m.user_rating, m.description, m.duration
+    FROM movies m
+    WHERE m.year_of_production IN (EXTRACT(YEAR FROM CURRENT_DATE), EXTRACT(YEAR FROM CURRENT_DATE) - 1)
+    ORDER BY m.user_rating DESC
+    LIMIT 10;  -- (тут таких всего три)
+END;
+$$ LANGUAGE plpgsql;
+
+-- функция ищет самое просматриваемое кино за указанный промежуток времени
+CREATE OR REPLACE FUNCTION get_most_watched_movies(start_date DATE, end_date DATE)
+RETURNS TABLE (
+    movie_id INTEGER,
+    title VARCHAR,
+    view_count INTEGER
+) AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        wm.movie_id, 
+        m.title, 
+        COUNT(*)::INTEGER AS view_count 
+    FROM watched_movies wm
+    JOIN movies m ON wm.movie_id = m.movie_id
+    WHERE wm.watching_date BETWEEN start_date AND end_date
+    GROUP BY wm.movie_id, m.title
+    ORDER BY view_count DESC
+    LIMIT 10; -- (всего в базе данных 9 фильмов и сериалов)
+END;
+$$ LANGUAGE plpgsql;
